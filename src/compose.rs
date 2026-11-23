@@ -23,10 +23,8 @@ pub(crate) fn rgba_size(width: u32, height: u32) -> Option<usize> {
 pub(crate) fn palette(table: Option<&[u8]>, transparent: Option<u8>) -> Option<[[u8; 4]; 256]> {
     let table = table?;
     let mut pal = [[0, 0, 0, 255]; 256];
-    for (e, c) in pal.iter_mut().zip(table.chunks_exact(3)) {
-        if let [r, g, b] = *c {
-            *e = [r, g, b, 255];
-        }
+    for (e, &[r, g, b]) in pal.iter_mut().zip(table.as_chunks::<3>().0) {
+        *e = [r, g, b, 255];
     }
     if let Some(t) = transparent {
         pal[usize::from(t)] = [0; 4];
@@ -53,7 +51,7 @@ pub(crate) fn row_mut(
 
 /// Paints one row of palette indices.
 pub(crate) fn paint_row(dst: &mut [u8], idx: &[u8], pal: &[[u8; 4]; 256]) {
-    for (px, &i) in dst.chunks_exact_mut(4).zip(idx) {
-        px.copy_from_slice(&pal[usize::from(i)]);
+    for (px, &i) in dst.as_chunks_mut::<4>().0.iter_mut().zip(idx) {
+        *px = pal[usize::from(i)];
     }
 }
