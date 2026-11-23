@@ -1,0 +1,43 @@
+gif-rs
+Copyright 2026 Chris Dobbyn
+
+gif-rs is a new crate, not a port of one repository. Its LZW decoder and its record parser
+follow giflib 5.2.1 step by step (see below); docs/design.md is the spec.
+
+Third-party code and data
+-------------------------
+
+1. giflib 5.2.1, dgif_lib.c, gif_lib.h and gif_lib_private.h (MIT, Copyright (c) 1997 Eric S. Raymond).
+
+   Ported or derived files: src/lzw.rs (the LZW decoder: DGifSetupDecompress, DGifGetLine,
+   DGifDecompressLine, DGifGetPrefixChar, DGifDecompressInput, DGifBufferedInput) and
+   src/parse.rs (the record parser: DGifOpen, DGifGetRecordType, DGifGetImageDesc,
+   DGifGetExtension, DGifGetExtensionNext, DGifGetCode, DGifGetCodeNext).
+
+   User of giflib (not a derived file): tests/parity/c/giforacle.c links giflib 5.2.1 as the
+   parity oracle. It runs in CI only and is never linked into the crate.
+
+   Licence text:
+
+       The GIFLIB distribution is Copyright (c) 1997  Eric S. Raymond
+
+       Permission is hereby granted, free of charge, to any person obtaining a copy
+       of this software and associated documentation files (the "Software"), to deal
+       in the Software without restriction, including without limitation the rights
+       to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+       copies of the Software, and to permit persons to whom the Software is
+       furnished to do so, subject to the following conditions:
+
+       The above copyright notice and this permission notice shall be included in
+       all copies or substantial portions of the Software.
+
+       THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+       IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+       FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+       AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+       LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+       OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+       THE SOFTWARE.
+
+2. Test corpus. The corpus is not in this repository. CI fetches it, and the licence of each
+   set is in tests/parity/corpus.toml.

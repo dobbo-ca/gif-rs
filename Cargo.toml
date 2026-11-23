@@ -1,0 +1,15 @@
+[package]
+name = "gif"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+description = "GIF decoder with strict resource limits: the LZW decoder and parser follow giflib 5.2.1. Written for dobbo-ca; not a port."
+publish = false
+exclude = ["/tests/fuzz", "/tests/parity"]
+
+# No dependencies.
+
+# One codegen unit, so the decode loops inline across modules.
+[profile.release]
+codegen-units = 1

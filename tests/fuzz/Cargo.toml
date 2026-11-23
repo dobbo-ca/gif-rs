@@ -1,0 +1,37 @@
+[package]
+name = "gif-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+gif = { path = "../.." }
+
+# Not part of the root package: only this crate may depend on libfuzzer-sys.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decoder_reuse"
+path = "fuzz_targets/decoder_reuse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "read_info"
+path = "fuzz_targets/read_info.rs"
+test = false
+doc = false
+bench = false

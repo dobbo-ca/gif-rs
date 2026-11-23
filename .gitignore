@@ -1,0 +1,6 @@
+/target
+/tests/fuzz/target
+/tests/fuzz/corpus
+/tests/fuzz/artifacts
+/tests/parity/byblos/target
+/tests/parity/imagers/target
