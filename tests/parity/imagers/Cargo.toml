@@ -1,0 +1,12 @@
+[package]
+name = "imagers-oracle"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Not part of the gif-rs package. CI only: the second oracle of the parity report (information
+# only). The image-rs gif crate is MIT OR Apache-2.0.
+[workspace]
+
+[dependencies]
+gif = "=0.13.1"
