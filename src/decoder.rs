@@ -176,8 +176,9 @@ enum Mode<'a> {
     Alloc(&'a mut Vec<u8>),
 }
 
-/// A decoder that keeps its tables and buffers across calls. A second call with an input of the
-/// same or smaller size and extension count makes no heap allocation.
+/// A decoder that keeps its tables and buffers across calls. A later call makes no heap
+/// allocation if its first frame is no wider, and it has no more extension blocks, than an
+/// earlier decode on this decoder.
 ///
 /// Memory the decoder keeps counts against `Limits::max_alloc` of every call.
 #[derive(Default)]
@@ -192,7 +193,9 @@ pub struct Decoder {
 ///
 /// Parses up to the first image descriptor, skips the first frame's LZW sub-blocks (so LZW
 /// errors and [`Error::NoColorTable`] are not found here), then scans the rest. The result is
-/// the [`Info`] that [`decode`] gives for the same input.
+/// the [`Info`] that [`decode`] gives for the same input, except that under a tight `max_alloc`
+/// `extensions` and `extensions_truncated` can differ: `decode` has booked its output and tables
+/// first, so it may have less room for the extension list.
 ///
 /// Limits: `max_width`, `max_height` and `max_pixels` apply to the canvas; `max_extensions`
 /// caps `Info::extensions`; `max_alloc` caps the extension list. The cancel flag is read per
@@ -204,7 +207,10 @@ pub struct Decoder {
 /// [`Error::WrongRecord`], [`Error::NoImage`] for a bad file; [`Error::WidthLimit`],
 /// [`Error::HeightLimit`], [`Error::PixelLimit`], [`Error::AllocLimit`] and
 /// [`Error::OutOfMemory`] for the limits; [`Error::Cancelled`]. A bad record after the first
-/// frame is not an error: it sets `complete = false`.
+/// frame is not an error: it sets `complete = false`. The extension list is the exception to
+/// `max_alloc`: if it does not fit, the rest are not recorded and `extensions_truncated` is set,
+/// with no error. A first frame with width 0, height 0 or over `i32::MAX` pixels is
+/// [`Error::ReadFailed`], as in [`decode`].
 pub fn read_info(data: &[u8], limits: &Limits, cancel: &AtomicBool) -> Result<Info, Error> {
     let mut d = Decoder::new();
     d.run(data, Mode::Info, limits, cancel)?;
@@ -259,7 +265,8 @@ impl Decoder {
 
     /// Decodes the first frame into `out` as RGBA8. `out.len()` must be
     /// [`Info::output_size`] (call [`Decoder::read_info`] first). Makes no heap allocation if
-    /// this decoder already decoded an input of the same or smaller size and extension count.
+    /// its first frame is no wider, and it has no more extension blocks, than an earlier decode
+    /// on this decoder.
     ///
     /// Limits: as [`decode`]. The caller's `out` is not charged to `max_alloc`.
     ///
@@ -267,7 +274,8 @@ impl Decoder {
     ///
     /// The same as [`decode`]. [`Error::OutputSize`] if `out.len()` is not the output size; it
     /// is found after the limit checks and the LZW decode, so a bad file gives its own error
-    /// first. `out` is not written on an error, except that it may hold a partial image.
+    /// first. If `out.len()` is the output size, `out` is zeroed first and may hold a partial
+    /// image on any later error; if it is not, `out` is not touched.
     pub fn decode_into(
         &mut self,
         data: &[u8],
@@ -292,9 +300,11 @@ impl Decoder {
             let grown = if cap == 0 { 8 } else { cap.saturating_mul(2) };
             let new_cap = grown.min(limits.max_extensions);
             let extra = new_cap - cap;
+            // A moving realloc holds the old and the new block at once: book the whole new one
+            // (the old one is in the ledger already, so this is conservative).
             let fits = self
                 .ledger
-                .reserve(extra.saturating_mul(size_of::<Extension>()))
+                .reserve(new_cap.saturating_mul(size_of::<Extension>()))
                 .is_ok()
                 && exts.try_reserve_exact(extra).is_ok();
             if !fits {
@@ -319,18 +329,12 @@ impl Decoder {
         canvas_width: u32,
         cancel: &AtomicBool,
     ) -> Result<bool, Error> {
-        // DGifSlurp (dgif_lib.c:1144-1148): an empty frame, or one of more than i32::MAX
-        // pixels, is GIF_ERROR with no code set, before any DGifGetLine call.
-        if f.width == 0
-            || f.height == 0
-            || u64::from(f.width) * u64::from(f.height) > i32::MAX as u64
-        {
-            return Err(Error::ReadFailed);
-        }
-        // The line buffer: one row of the frame.
+        // The line buffer: one row of the frame. A wider row frees the old block first, so the
+        // old and the new one are never live together.
         let fw = usize::from(f.width);
         if self.line.capacity() < fw {
             self.ledger.reserve(fw - self.line.capacity())?;
+            self.line = Vec::new();
         }
         self.line.clear();
         self.line
@@ -366,7 +370,7 @@ impl Decoder {
                 if cancel.load(Ordering::Relaxed) {
                     return Err(Error::Cancelled);
                 }
-                lzw.get_line(r, &mut self.line, fw)?;
+                lzw.get_line(r, &mut self.line, fw, cancel)?;
                 if let (Some(pal), Some(o)) = (&pal, out.as_deref_mut()) {
                     let row =
                         compose::row_mut(o, canvas_width, f.left, u32::from(f.top) + y, f.width)
@@ -443,6 +447,15 @@ impl Decoder {
         if u64::from(cw) * u64::from(ch) > limits.max_pixels {
             return Err(Error::PixelLimit);
         }
+        // DGifSlurp (dgif_lib.c:1144-1148): an empty frame, or one of more than i32::MAX
+        // pixels, is GIF_ERROR with no code set. Same order as the oracle: after the limits,
+        // before any output, in every mode.
+        if frame.width == 0
+            || frame.height == 0
+            || u64::from(frame.width) * u64::from(frame.height) > i32::MAX as u64
+        {
+            return Err(Error::ReadFailed);
+        }
         self.info.width = cw;
         self.info.height = ch;
         self.info.frame = frame.clone();
@@ -451,9 +464,8 @@ impl Decoder {
         // The output. The canvas starts as transparent black.
         let mut bad_size = false;
         let want_pixels = !matches!(mode, Mode::Info);
-        let degenerate = frame.width == 0 || frame.height == 0;
         let (out, decode): (Option<&mut [u8]>, bool) = match mode {
-            Mode::Info => (None, degenerate),
+            Mode::Info => (None, false),
             Mode::Into(o) => {
                 if compose::rgba_size(cw, ch) == Some(o.len()) {
                     o.fill(0);
@@ -473,8 +485,7 @@ impl Decoder {
             }
         };
 
-        // The first frame. `read_info` skips the LZW data, but a frame with no pixels runs the
-        // giflib calls (they decide how much data is read).
+        // The first frame. `read_info` skips the LZW data.
         if decode {
             let has_table = self.decode_frame(&mut r, data, &frame, out, cw, cancel)?;
             if want_pixels && !has_table {

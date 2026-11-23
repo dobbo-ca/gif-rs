@@ -11,7 +11,7 @@
  *       The formats and every policy are in docs/design.md ("Composition", "Scan",
  *       "Parity output format").
  *   giforacle -gen <in-dir> <out-dir>
- *       Writes 40 deterministic mutations of every input of up to 1 MiB, named
+ *       Writes 40 deterministic mutations of every input of up to 256 KiB (MAX_GEN_INPUT), named
  *       <name without .gif>.mNN.gif: truncations, bit flips, length-field edits,
  *       sub-block length edits, LZW code size edits.
  *   giforacle -bench <in-dir> [N]

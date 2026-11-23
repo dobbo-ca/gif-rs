@@ -839,3 +839,47 @@ fn error_tokens() {
         let _: &dyn std::error::Error = &e;
     }
 }
+
+#[test]
+fn frame_over_i32_max_pixels_is_read_failed_in_every_mode() {
+    // 46341 * 46341 = 2_147_488_281 > i32::MAX. No pixel data: the error comes before any
+    // output is sized, so this allocates nothing even with the limits raised.
+    let mut d = b"GIF89a".to_vec();
+    d.extend_from_slice(&[1, 0, 1, 0, 0, 0, 0]);
+    d.extend_from_slice(&[0x2C, 0, 0, 0, 0, 0x05, 0xB5, 0x05, 0xB5, 0, 2, 0x3B]);
+    let l = Limits {
+        max_pixels: 1 << 33,
+        max_alloc: usize::MAX,
+        ..Limits::default()
+    };
+    assert_eq!(
+        gif::read_info(&d, &l, &no()).unwrap_err(),
+        Error::ReadFailed
+    );
+    assert_eq!(gif::decode(&d, &l, &no()).unwrap_err(), Error::ReadFailed);
+    let mut out = [7u8; 4];
+    assert_eq!(
+        Decoder::new()
+            .decode_into(&d, &mut out, &l, &no())
+            .unwrap_err(),
+        Error::ReadFailed
+    );
+}
+
+#[test]
+fn extensions_under_a_tight_max_alloc_are_truncated_without_error() {
+    // 4096 comment blocks before the image: the list grows by realloc to 4096 * 24 bytes. The
+    // call is Ok with fewer blocks recorded, never AllocLimit.
+    let mut g = Gif::new(1, 1, &P4);
+    for _ in 0..4096 {
+        g = g.ext(0xFE, &[]);
+    }
+    let d = g.image(&Img::new(1, 1), &[0]).trailer();
+    let l = Limits {
+        max_alloc: 100 << 10,
+        ..Limits::default()
+    };
+    let i = gif::read_info(&d, &l, &no()).unwrap();
+    assert!(i.extensions_truncated);
+    assert!(i.extensions.len() < 4096);
+}

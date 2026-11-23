@@ -9,10 +9,12 @@ Third-party code and data
 
 1. giflib 5.2.1, dgif_lib.c, gif_lib.h and gif_lib_private.h (MIT, Copyright (c) 1997 Eric S. Raymond).
 
-   Ported or derived files: src/lzw.rs (the LZW decoder: DGifSetupDecompress, DGifGetLine,
-   DGifDecompressLine, DGifGetPrefixChar, DGifDecompressInput, DGifBufferedInput) and
-   src/parse.rs (the record parser: DGifOpen, DGifGetRecordType, DGifGetImageDesc,
-   DGifGetExtension, DGifGetExtensionNext, DGifGetCode, DGifGetCodeNext).
+   Ported or derived files: src/lzw.rs (the LZW decoder: DGifGetImageHeader (PixelCount setup),
+   DGifSetupDecompress, DGifGetLine, DGifDecompressLine, DGifGetPrefixChar,
+   DGifDecompressInput, DGifBufferedInput) and src/parse.rs (the record parser: DGifOpen,
+   DGifGetScreenDesc, DGifGetRecordType, DGifGetImageDesc/DGifGetImageHeader, DGifGetExtension,
+   DGifGetExtensionNext, DGifGetCodeNext). src/decoder.rs follows the checks and the call pattern
+   of DGifSlurp but copies no giflib text.
 
    User of giflib (not a derived file): tests/parity/c/giforacle.c links giflib 5.2.1 as the
    parity oracle. It runs in CI only and is never linked into the crate.

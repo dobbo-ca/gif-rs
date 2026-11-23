@@ -7,6 +7,9 @@ use crate::ledger::Ledger;
 use crate::lzw::Lzw;
 use crate::parse;
 use crate::reader::Reader;
+use std::sync::atomic::AtomicBool;
+
+static NO: AtomicBool = AtomicBool::new(false);
 
 #[test]
 fn ledger_charges_and_peak() {
@@ -45,7 +48,7 @@ fn lzw_one_pixel_and_flush() {
     let mut z = Lzw::new();
     z.setup(2, 1, 1);
     let mut line = [9u8];
-    z.get_line(&mut r, &mut line, 1).unwrap();
+    z.get_line(&mut r, &mut line, 1, &NO).unwrap();
     assert_eq!(line, [0]);
     // The call that reached PixelCount 0 read up to the terminator.
     assert_eq!(r.pos(), 5);
@@ -59,7 +62,7 @@ fn lzw_eof_before_the_last_pixel() {
     z.setup(2, 2, 1);
     let mut line = [0u8; 2];
     assert_eq!(
-        z.get_line(&mut r, &mut line, 2).unwrap_err(),
+        z.get_line(&mut r, &mut line, 2, &NO).unwrap_err(),
         Error::EofTooSoon
     );
 }
@@ -72,21 +75,21 @@ fn lzw_bad_prefix_and_empty_block() {
     z.setup(2, 2, 1);
     let mut line = [0u8; 2];
     assert_eq!(
-        z.get_line(&mut Reader::new(&bad), &mut line, 2)
+        z.get_line(&mut Reader::new(&bad), &mut line, 2, &NO)
             .unwrap_err(),
         Error::ImageDefect
     );
     // An empty sub-block where LZW data is needed.
     z.setup(2, 2, 1);
     assert_eq!(
-        z.get_line(&mut Reader::new(&[0u8]), &mut line, 2)
+        z.get_line(&mut Reader::new(&[0u8]), &mut line, 2, &NO)
             .unwrap_err(),
         Error::ImageDefect
     );
     // A short sub-block.
     z.setup(2, 2, 1);
     assert_eq!(
-        z.get_line(&mut Reader::new(&[5u8, 1]), &mut line, 2)
+        z.get_line(&mut Reader::new(&[5u8, 1]), &mut line, 2, &NO)
             .unwrap_err(),
         Error::ReadFailed
     );
@@ -98,7 +101,8 @@ fn lzw_data_too_big() {
     let mut z = Lzw::new();
     z.setup(2, 3, 0);
     assert_eq!(
-        z.get_line(&mut Reader::new(&[]), &mut [], 0).unwrap_err(),
+        z.get_line(&mut Reader::new(&[]), &mut [], 0, &NO)
+            .unwrap_err(),
         Error::DataTooBig
     );
 }
@@ -287,4 +291,33 @@ fn sub_blocks_give_the_payloads() {
     let v: Vec<&[u8]> = e.sub_blocks(&d).collect();
     assert_eq!(v, [&[7u8, 8][..], &[9u8][..]]);
     assert_eq!(e.bytes(&d), &d[..]);
+}
+
+#[test]
+fn lzw_clear_code_flood_honours_cancel() {
+    // Min code size 0: clear is code 1 and every code is 1 bit, so each 0xFF byte is eight clear
+    // codes that write no pixel. Without a cancel check inside the line this runs to the end of
+    // the input.
+    let mut data = Vec::new();
+    for _ in 0..20 {
+        data.push(255);
+        data.extend_from_slice(&[0xFF; 255]);
+    }
+    data.push(0);
+    let mut z = Lzw::new();
+    z.setup(0, 1, 1);
+    let cancel = AtomicBool::new(true);
+    let mut line = [0u8; 1];
+    assert_eq!(
+        z.get_line(&mut Reader::new(&data), &mut line, 1, &cancel)
+            .unwrap_err(),
+        Error::Cancelled
+    );
+    // Not set: the flood runs to the end of the input.
+    z.setup(0, 1, 1);
+    assert_eq!(
+        z.get_line(&mut Reader::new(&data), &mut line, 1, &NO)
+            .unwrap_err(),
+        Error::ImageDefect
+    );
 }

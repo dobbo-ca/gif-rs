@@ -1,5 +1,6 @@
-//! The LZW decoder: a port of giflib 5.2.1 `DGifSetupDecompress`, `DGifGetLine`,
-//! `DGifDecompressLine`, `DGifGetPrefixChar`, `DGifDecompressInput` and `DGifBufferedInput`.
+//! The LZW decoder: a port of giflib 5.2.1 `DGifGetImageHeader` (PixelCount),
+//! `DGifSetupDecompress`, `DGifGetLine`, `DGifDecompressLine`, `DGifGetPrefixChar`,
+//! `DGifDecompressInput` and `DGifBufferedInput`.
 //!
 //! giflib is MIT licensed. This file is derived from `dgif_lib.c`:
 //!
@@ -34,6 +35,7 @@
 use crate::error::Error;
 use crate::parse;
 use crate::reader::Reader;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const LZ_MAX_CODE: i32 = 4095; // Biggest code possible in 12 bits.
 const LZ_BITS: i32 = 12;
@@ -118,6 +120,7 @@ impl Lzw {
         r: &mut Reader<'_>,
         line: &mut [u8],
         line_len: usize,
+        cancel: &AtomicBool,
     ) -> Result<(), Error> {
         let line_len = if line_len == 0 {
             usize::from(self.width)
@@ -129,7 +132,7 @@ impl Lzw {
             return Err(Error::DataTooBig);
         }
         let line = line.get_mut(..line_len).ok_or(Error::ReadFailed)?;
-        self.decompress_line(r, line)?;
+        self.decompress_line(r, line, cancel)?;
         if self.pixel_count == 0 {
             // We probably won't be called any more: flush the rest of the image until an empty
             // block (size 0) is read.
@@ -139,7 +142,12 @@ impl Lzw {
     }
 
     /// `DGifDecompressLine`: decompresses into `line` (length `LineLen`).
-    fn decompress_line(&mut self, r: &mut Reader<'_>, line: &mut [u8]) -> Result<(), Error> {
+    fn decompress_line(
+        &mut self,
+        r: &mut Reader<'_>,
+        line: &mut [u8],
+        cancel: &AtomicBool,
+    ) -> Result<(), Error> {
         let line_len = line.len();
         let mut i = 0usize;
         let eof_code = self.eof_code;
@@ -171,7 +179,11 @@ impl Lzw {
                 // EOF before the last pixel (5.2.1 has no exception for the last pixel).
                 return Err(Error::EofTooSoon);
             } else if crnt_code == clear_code {
-                // We need to start over again.
+                // We need to start over again. A clear writes no pixel and costs an 8 KiB
+                // memset, so a flood of them is the one place the row check is too coarse.
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(Error::Cancelled);
+                }
                 self.prefix.fill(NO_SUCH_U16);
                 self.running_code = self.eof_code + 1;
                 self.running_bits = self.bits_per_pixel + 1;

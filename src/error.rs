@@ -9,8 +9,9 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {
-    /// The input ends inside a record, or the LZW code size is over 8 (giflib
-    /// `D_GIF_ERR_READ_FAILED`, or no code set).
+    /// The input ends inside a record, the LZW code size is over 8, or the first frame has width
+    /// 0, height 0 or more than `i32::MAX` pixels (giflib `D_GIF_ERR_READ_FAILED`, or no code
+    /// set).
     ReadFailed,
     /// The first 3 bytes are not `GIF` (giflib `D_GIF_ERR_NOT_GIF_FILE`).
     NotGif,
