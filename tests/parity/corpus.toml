@@ -13,7 +13,7 @@ name = "giflib-5.2.1"
 path = "giflib_5.2.1.orig.tar.gz"
 url = "https://deb.debian.org/debian/pool/main/g/giflib/giflib_5.2.1.orig.tar.gz"
 size = 444187
-sha256 = ""
+sha256 = "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd"
 license = "MIT"
 extract = "pic tests/wedge.gif"
 
@@ -26,7 +26,7 @@ name = "image-gif-0.13.1"
 path = "image-gif-0.13.1.tar.gz"
 url = "https://github.com/image-rs/image-gif/archive/refs/tags/v0.13.1.tar.gz"
 size = 12497283
-sha256 = ""
+sha256 = "2972a8037e6e918dab319a9a6ef402ba5006b0659e8bcbd118b50766319cd9c7"
 license = "MIT OR Apache-2.0"
 extract = "tests/crashtest tests/stall tests/samples/2x2.gif"
 
@@ -41,7 +41,7 @@ name = "wuffs-a87f0bb85b9406d29f48a1c03b6f42c4585145f6"
 path = "wuffs-a87f0bb.tar.gz"
 url = "https://github.com/google/wuffs/archive/a87f0bb85b9406d29f48a1c03b6f42c4585145f6.tar.gz"
 size = 15841044
-sha256 = ""
+sha256 = "6c4cd0df9052eb0ff7300fcb99ceb3c305a9af2448bc1a8f363052bd373e2d96"
 license = "Apache-2.0"
 extract = "test/data"
 
@@ -53,6 +53,6 @@ name = "libnsgif-release-1.0.0"
 path = "libnsgif-release-1.0.0.tar.gz"
 url = "https://github.com/netsurf-browser/libnsgif/archive/refs/tags/release/1.0.0.tar.gz"
 size = 283266
-sha256 = ""
+sha256 = "269a0860e24be3de29eff1b91dd0c93adbc86b0225816d48da9b51d585d1b359"
 license = "MIT"
 extract = "test/data test/ns-afl-gif"
