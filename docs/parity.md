@@ -4,8 +4,8 @@ All of this runs in CI only (the `parity` job). Nothing runs on the owner's Mac.
 
 ## Oracles
 
-1. `examples/oracle.rs` (gif-rs): `oracle <in-dir> <out-dir>`, and `oracle gen <in> <out>` for
-   mutations.
+1. `examples/oracle.rs` (gif-rs): `oracle [--threads N] <in-dir> <out-dir>`. Mutations come from
+   `giforacle -gen` (`tests/parity/run.sh gen`).
 2. `tests/parity/c/giforacle.c`: giflib 5.2.1 (Debian bookworm `libgif-dev` 5.2.1-2.5). It is
    built in CI only and never linked into the crate. It uses `DGifOpen` with a memory input
    function and the low-level calls, mirrors the record loop in [design.md](design.md), decodes
@@ -26,12 +26,14 @@ no-image no-color-table limit oom`. The exact format is in design.md.
 
 | Set | Files | Licence | Source |
 |---|---|---|---|
-| giflib 5.2.1 `pic/*.gif` | TBD | MIT | the giflib 5.2.1 tarball |
-| Other public sets | TBD | per set | listed with SHA-256 in `tests/parity/corpus.toml`, fetched by CI |
-| Mutations | TBD | n/a | made by `oracle gen`; deterministic |
+| giflib-5.2.1 (`pic`, `tests/wedge.gif`) | see `corpus.toml` | MIT | the giflib 5.2.1 tarball |
+| image-gif-0.13.1 | see `corpus.toml` | MIT OR Apache-2.0 | image-rs/image-gif, files made for the repo |
+| wuffs-a87f0bb | see `corpus.toml` | Apache-2.0 | google/wuffs at a pinned commit |
+| libnsgif-release-1.0.0 | see `corpus.toml` | MIT | libnsgif test data |
+| Mutations | 13080 | n/a | made by `giforacle -gen`; deterministic |
 | Fuzz-grown | 0 at first | n/a | `tests/data/fuzz-grown/` |
 
-The corpus is not in git. Mutations per input: truncations, single bit flips, and edits of
+The four sets give 329 files in all (CI run 45264352241). The corpus is not in git. Mutations per input: truncations, single bit flips, and edits of
 length fields (sub-block lengths, table sizes, code size, descriptor sizes).
 
 ## Gate
@@ -43,12 +45,19 @@ oracle follows them, so they do not show up as diffs.
 
 ## Results
 
-TBD (numbers come from the `parity` job on main).
+Latest green `parity` job on main: 13409 inputs, no difference against giflib 5.2.1. The ok/err split and the image-rs count are in the job summary (`summary.md`) of each run.
 
 | Item | Count |
 |---|---|
-| inputs | TBD |
-| equal output | TBD |
-| equal error | TBD |
-| differences | TBD |
-| image-rs agrees (information) | TBD |
+| inputs | 13409 |
+| equal output (both decode) | 591 |
+| equal error token | 12818 |
+| differences | 0 |
+| image-rs agrees (information) | 13284 of 13409; the 125 others are all mutations (87 giflib errors and image-rs decodes, 35 the reverse, 3 pixels differ); all 329 corpus files agree |
+
+## Second gate and arm64
+
+- `run.sh full` also compares gif-rs with `--threads 1` against gif-rs with the default threads
+  (`d-threads`). Any difference fails the job.
+- `parity-arm64` runs the aarch64 oracle under qemu on every 4th file of the sorted corpus and
+  compares it with the x86_64 output of the same files.

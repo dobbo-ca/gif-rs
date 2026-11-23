@@ -6,7 +6,9 @@ pub struct Limits {
     /// Peak working memory of one call, in bytes (default 1 GiB). The output `Vec` of
     /// [`decode`](crate::decode), the LZW tables, the line buffer and the extension list count.
     /// Each is charged before it is allocated. More is
-    /// [`Error::AllocLimit`](crate::Error::AllocLimit).
+    /// [`Error::AllocLimit`](crate::Error::AllocLimit), except for the extension list: if it
+    /// does not fit, the remaining blocks are not recorded and `Info::extensions_truncated` is
+    /// set, with no error.
     pub max_alloc: usize,
     /// Most OS threads of one call (default `std::thread::available_parallelism`). This crate
     /// never spawns a thread: the LZW decoder is serial. The field exists for the shared

@@ -48,8 +48,9 @@ unsafe impl GlobalAlloc for Counting {
         let q = unsafe { System.realloc(p, l, new) };
         if !q.is_null() {
             CALLS.fetch_add(1, SeqCst);
-            CUR.fetch_sub(l.size(), SeqCst);
+            // A moving realloc holds both blocks at once: count the new one first.
             grow(new);
+            CUR.fetch_sub(l.size(), SeqCst);
         }
         q
     }
@@ -135,6 +136,23 @@ fn zero_alloc(dec: &mut Decoder, name: &str, data: &[u8]) {
     assert_eq!(dec.read_info(data, &l, &cancel).unwrap(), &first, "{name}");
 }
 
+/// The first `decode_into` of a smaller input on a decoder warmed by a bigger one allocates
+/// nothing: the first frame is no wider and there are no more extension blocks.
+fn warm_first_call(dec: &mut Decoder, name: &str, data: &[u8]) {
+    let (cancel, l) = (AtomicBool::new(false), Limits::default());
+    let size = gif::read_info(data, &l, &cancel).unwrap().output_size();
+    let mut out = vec![0u8; size];
+    let before = CALLS.load(SeqCst);
+    let r = dec.decode_into(data, &mut out, &l, &cancel).is_ok();
+    let after = CALLS.load(SeqCst);
+    assert!(r, "{name}");
+    assert_eq!(
+        after - before,
+        0,
+        "{name}: first warm decode_into allocated"
+    );
+}
+
 const VALUES: [usize; 17] = [
     0,
     1,
@@ -205,7 +223,9 @@ fn allocation() {
     // One decoder, warmed by the biggest input, then smaller ones.
     let mut dec = Decoder::new();
     zero_alloc(&mut dec, "big", &big);
+    warm_first_call(&mut dec, "interlaced", &inter);
     zero_alloc(&mut dec, "interlaced", &inter);
+    warm_first_call(&mut dec, "small", &small);
     zero_alloc(&mut dec, "small", &small);
     // A fresh decoder for each shape.
     zero_alloc(&mut Decoder::new(), "interlaced fresh", &inter);
@@ -217,6 +237,20 @@ fn allocation() {
         peak_decode(name, data, 1, &VALUES);
         peak_decode(name, data, many, &VALUES);
     }
+
+    // Thousands of extension blocks: the list grows by realloc, and the old and the new block
+    // are live together. Values near 4096 * 24 bytes.
+    let mut many_ext = Gif::new(1, 1, &P2);
+    for _ in 0..5000 {
+        many_ext = many_ext.ext(0xFE, &[b"c"]);
+    }
+    let many_ext = many_ext.image(&Img::new(1, 1), &[0]).trailer();
+    peak_decode(
+        "extensions",
+        &many_ext,
+        1,
+        &[4096, 50 << 10, 100 << 10, 1 << 30],
+    );
 
     // Limit errors are found before the output is allocated.
     let huge = Gif::new(65535, 65535, &P2)

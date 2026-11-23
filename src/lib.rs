@@ -13,7 +13,9 @@
 //! - `max_alloc` (bytes, default 1 GiB): the peak working memory of the call. The output `Vec` of
 //!   [`decode`], the LZW tables, the line buffer and the extension list are charged before they
 //!   are allocated. More is [`Error::AllocLimit`]; an allocator that refuses a size within the
-//!   limit is [`Error::OutOfMemory`].
+//!   limit is [`Error::OutOfMemory`]. The extension list is the exception: if it does not fit,
+//!   the remaining blocks are not recorded and [`Info::extensions_truncated`] is set, with no
+//!   error.
 //! - `max_threads` (default `available_parallelism`): the most OS threads of the call. This crate
 //!   never spawns a thread, so every value gives the same output.
 //! - `max_width`, `max_height` (default `1 << 17`) and `max_pixels` (default `1 << 28`) apply to
@@ -23,8 +25,8 @@
 //!   [`Info::extensions`]. The rest are not recorded and [`Info::extensions_truncated`] is set.
 //!   This is not an error.
 //!
-//! The cancel flag is read per record, per decoded line and per scanned frame. A set flag is
-//! [`Error::Cancelled`].
+//! The cancel flag is read per record, per decoded line, per scanned frame and at every LZW clear
+//! code. A set flag is [`Error::Cancelled`].
 //!
 //! ```
 //! use gif::Limits;
@@ -63,8 +65,8 @@
 //!
 //! [`decode`] decodes in one call and [`read_info`] reads the metadata without decoding the first
 //! frame. [`Decoder`] keeps its buffers across calls: [`Decoder::decode_into`] writes into the
-//! caller's slice and makes no heap allocation on a second call with an input of the same or
-//! smaller size.
+//! caller's slice and makes no heap allocation on a later call whose first frame is no wider, and
+//! that has no more extension blocks, than an earlier decode on the same decoder.
 #![forbid(unsafe_code)]
 #![cfg_attr(
     not(test),

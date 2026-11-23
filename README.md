@@ -25,17 +25,13 @@ let (info, rgba) = gif::decode(&data, &limits, &cancel)?;
 println!("{}x{}, {} frames, {} bytes", info.width, info.height, info.frame_count, rgba.len());
 ```
 
-To reuse buffers across images, keep a `gif::Decoder`, call `read_info`, then `decode_into` with
-your own slice (`info.output_size()` bytes). A second call with an input of the same or smaller
-size makes no heap allocation.
-
 ## Resource limits
 
 There is no unlimited entry point. Every call takes a `Limits`.
 
 | Field | Default | Unit | Over it |
 |---|---|---|---|
-| `max_alloc` | 1 GiB | bytes, peak of one call (output included) | `Error::AllocLimit` (`Error::OutOfMemory` if the allocator fails) |
+| `max_alloc` | 1 GiB | bytes, peak of one call (the output `Vec` of `decode` included; the caller's slice in `decode_into` is not charged) | `Error::AllocLimit` (`Error::OutOfMemory` if the allocator fails) |
 | `max_threads` | `std::thread::available_parallelism()` | threads | no error; never spawns a thread (see [threading](docs/threading.md)) |
 | `max_width` | 131 072 (`1 << 17`) | pixels, canvas | `Error::WidthLimit` |
 | `max_height` | 131 072 (`1 << 17`) | pixels, canvas | `Error::HeightLimit` |
@@ -43,9 +39,13 @@ There is no unlimited entry point. Every call takes a `Limits`.
 | `max_extensions` | 4096 | extension blocks recorded | none: the rest are not recorded, `Info::extensions_truncated` is set |
 
 - `max_alloc` is the enforced peak working memory of one call. Allocations are charged before
-  they are made.
+  they are made. The extension list is the exception: if it does not fit, the remaining blocks
+  are not recorded and `Info::extensions_truncated` is set; no error.
 - Cancellation: every call takes `&AtomicBool`. It is checked per record, per decoded line and
-  per scanned frame. When set, the call returns `Error::Cancelled`.
+  per scanned frame, and at every LZW clear code. When set, the call returns `Error::Cancelled`.
+- Reuse: keep a `gif::Decoder`, call `read_info`, then `decode_into` with your own slice
+  (`info.output_size()` bytes). A later call makes no heap allocation if its first frame is no
+  wider, and it has no more extension blocks, than an earlier decode on that `Decoder`.
 
 ## Docs
 

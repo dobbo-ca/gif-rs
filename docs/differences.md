@@ -10,7 +10,8 @@ exactly. Where it is "browsers", gif-rs and both oracles share the policy, so pa
 | Canvas size | Composites nothing; screen and frame sizes stay apart | The image grows to fit the first frame | Browsers: the canvas is `max(screen, left + frame width)` by `max(screen, top + frame height)` |
 | Background colour | Kept as an index only | Ignored; the canvas starts transparent | Browsers: not painted; kept in `Info::background_index` |
 | More than one GCE before an image | `DGifSavedExtensionToGCB` takes the first | The last one applies | Browsers: the last GCE applies |
-| GCE first sub-block shorter than 4 bytes | Not a valid GCE; ignored | Ignored | Same: ignored, kept in `extensions` |
+| GCE first sub-block not exactly 4 bytes | `DGifExtensionToGCB` rejects it (`len != 4`), so there is no GCE | Not checked against Wuffs `decode_gc` (offline); likely strict about the size | gif-rs: shorter than 4 is ignored (kept in `extensions`); 4 or more uses the first 4 bytes. The oracles do the same, so parity does not see this |
+| First frame with width 0, height 0 or over `i32::MAX` pixels | `DGifSlurp`: error | An empty frame drawn on the screen-sized canvas | giflib: `ReadFailed`, in every mode, before any output is sized |
 | Pixel index past the colour table | Reads past its array (undefined) | The table is padded with black | Browsers: opaque black `(0, 0, 0, 255)` |
 | No local and no global colour table | Pixels have no colour | A default or no image | `NoColorTable`, after the LZW decode succeeded |
 | EOF code before the last pixel | `EofTooSoon` | Shows the partial image | giflib: `EofTooSoon`, no output |

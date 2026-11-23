@@ -37,13 +37,19 @@ impl Decoder {
 }
 ```
 
-- A second `decode_into` (or `read_info`) on a `Decoder` with an input of the same or smaller
-  size and extension count makes ZERO heap allocations (tests/alloc.rs proves it with a counting
-  global allocator).
+- A later `decode_into` (or `read_info`) on a `Decoder` makes ZERO heap allocations if its first
+  frame is no wider, and it has no more extension blocks, than an earlier decode on that
+  `Decoder` (tests/alloc.rs proves it with a counting global allocator).
 - `read_info` parses up to the first image descriptor, skips (does not decode) the first frame's
   LZW sub-blocks, then scans the rest. `decode`/`decode_into` decode the first frame instead of
-  skipping it, then scan the rest. Both fill the same `Info`.
-- Cancel: checked per record, per decoded line, and per scanned frame. Set: Error::Cancelled.
+  skipping it, then scan the rest. Both fill the same `Info`, with one exception: under a tight
+  `max_alloc`, `extensions` and `extensions_truncated` can differ between `read_info`, `decode`
+  and `decode_into`, because the list is charged against what the output and the tables left.
+  A first frame with width 0, height 0 or over `i32::MAX` pixels is `ReadFailed` in every mode,
+  checked right after the canvas limits and before any output is sized.
+- Cancel: checked per record, per decoded line, per scanned frame, and at every LZW clear code
+  (a clear writes no pixel, so a flood of them would otherwise never reach the per-line check).
+  Set: Error::Cancelled.
 
 ```rust
 pub struct Info {
@@ -109,7 +115,8 @@ gives. Highlights (read dgif_lib.c for the rest):
   code size byte. Short read = `ReadFailed`. Code size byte missing: giflib returns an error with
   no code set; gif-rs maps it to `ReadFailed`. Code size > 8 = `ReadFailed` (giflib's code).
 - GCE (label 0xF9): the first sub-block must be at least 4 bytes, else the GCE is ignored (kept
-  in `extensions` only). Bytes: packed (disposal = (p >> 2) & 7, user_input = p & 2, transparent
+  in `extensions` only). giflib's `DGifExtensionToGCB` is stricter (length must be exactly 4);
+  gif-rs and the oracle use the first 4 bytes of a longer block (see docs/differences.md). Bytes: packed (disposal = (p >> 2) & 7, user_input = p & 2, transparent
   flag = p & 1), delay u16 LE, transparent index. The LAST GCE before the first image descriptor
   applies (browsers; giflib's DGifSavedExtensionToGCB takes the first, see docs/differences.md).
 
@@ -186,8 +193,8 @@ The parity class token is in brackets; the oracle writes the same token for the 
 | `NoColorTable` | `no-color-table` | policy |
 | `WidthLimit`, `HeightLimit`, `PixelLimit`, `AllocLimit` | `limit` | - |
 | `OutOfMemory` | `oom` | D_GIF_ERR_NOT_ENOUGH_MEM (109) |
-| `OutputSize` | - | caller error |
-| `Cancelled` | - | - |
+| `OutputSize` | `output-size` | caller error (the oracles never write it) |
+| `Cancelled` | `cancelled` | - (the oracles never write it) |
 
 `Error::token(&self) -> &'static str` returns the token.
 

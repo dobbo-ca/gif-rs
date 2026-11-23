@@ -80,12 +80,15 @@ FROM rust:1.99.1-bookworm AS imagers-oracle
 WORKDIR /imagers
 COPY tests/parity/imagers/Cargo.* ./
 RUN L=; [ -f Cargo.lock ] && L=--locked; mkdir src && echo 'fn main() {}' > src/main.rs \
-    && cargo fetch $L && rm -rf src
+    && { cargo fetch $L; rm -rf src; }
 COPY tests/parity/imagers/src src
+# Information only: if the fetch or the build fails, the stage still gives a binary (one that
+# exits 1), so the parity stage's COPY never fails and run.sh's `|| echo` reports it.
 RUN --mount=type=cache,id=gif-rs-target-imagers,sharing=locked,target=/imagers/target \
-    L=; [ -f Cargo.lock ] && L=--locked; find src -name '*.rs' -exec touch {} + \
+    { L=; [ -f Cargo.lock ] && L=--locked; find src -name '*.rs' -exec touch {} + \
     && CARGO_NET_OFFLINE=true cargo build $L --release \
-    && cp target/release/imagers-oracle /usr/local/bin/imagers-oracle
+    && cp target/release/imagers-oracle /usr/local/bin/imagers-oracle; } \
+    || { printf '#!/bin/sh\nexit 1\n' > /usr/local/bin/imagers-oracle && chmod +x /usr/local/bin/imagers-oracle; }
 
 # The public corpus (tests/parity/corpus.toml: sizes and SHA-256 are checked) in a cache mount, so
 # a build downloads it once. sharing=locked: two builds never download at once. Only a list of the
@@ -167,8 +170,10 @@ COPY --from=data /data.list /data.list
 RUN --mount=type=cache,id=gif-rs-data,target=/data,sharing=locked,readonly \
     sh tests/parity/run.sh gather tests/fuzz/seeds tests/data . \
     && sh tests/parity/run.sh gather tests/fuzz/seeds /data/x . \
-    && for f in tests/fuzz/seeds/*; do printf '\0' >> "$f"; done \
-    && ls tests/fuzz/seeds | wc -l \
+    && n=$(find tests/fuzz/seeds -type f -name '*.gif' | wc -l) \
+    && { [ "$n" -ge 300 ] || { echo "fuzz seeds: $n, want >= 300" >&2; exit 1; }; } \
+    && echo "fuzz seeds: $n" \
+    && find tests/fuzz/seeds -type f -exec sh -c 'printf "\0" >> "$1"' _ {} \; \
     && cargo +nightly fuzz build --fuzz-dir tests/fuzz
 
 # Benchmark (bench.yml): giflib (C oracle, bench mode) and examples/bench on the same corpus, in
