@@ -5,7 +5,7 @@ and reports the frame count and every extension block as byte ranges into your i
 decoder and the parser follow giflib 5.2.1, so output and errors match it. Pure Rust, no C
 dependency, no `unsafe`. Apache-2.0; see `NOTICE`.
 
-Dependency: `gif = { git = "https://github.com/dobbo-ca/gif-rs", rev = "<sha>" }`
+Dependency: `gif = { git = "https://github.com/dobbo-ca/gif-rs", rev = "e661753b880be30371e883a450ab851044de265f" }`
 
 ## Quick start
 
