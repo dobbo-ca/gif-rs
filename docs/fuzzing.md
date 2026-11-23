@@ -32,4 +32,4 @@ gh run watch
 
 `max_total_time` is seconds per target (default 600). Crash inputs are uploaded as artifacts.
 
-Fuzz hours so far: TBD.
+Fuzz hours so far: 0.75 (run 45271235369 on main e661753: 3 targets x 900 s; decode 431588 runs, read_info 317701, decoder_reuse 59730; 0 crashes).
