@@ -7,7 +7,7 @@
 #   run.sh gen <dst>                      the mutations of the corpus (giforacle -gen) in <dst>
 #   run.sh full <report-dir>              the gates on tests/data + /data/x + mutations (uses /gen if it exists)
 #   run.sh ref <out-dir>                  gif-oracle on a subset of the corpus, one thread
-#   run.sh arm <ref-dir>                  the aarch64 oracle (qemu) on the same subset vs <ref-dir>
+#   run.sh arm <ref-dir>                  the aarch64 oracle (native arm64) on the same subset vs <ref-dir>
 # Binaries: gif-oracle (gif-rs examples/oracle), giforacle (giflib), imagers-oracle (image-rs gif
 # crate), and for `arm` gif-oracle-arm64 run by $ARM_RUN. The gates: giflib vs gif-rs, and one
 # thread vs default threads. Each must be an empty diff, else the exit status is not 0. The
@@ -146,7 +146,7 @@ full() {
   return $bad
 }
 
-# subset <dst>: every 4th file of the sorted corpus (the arm gate runs under qemu).
+# subset <dst>: every 4th file of the sorted corpus (the arm gate runs this subset).
 subset() {
   mkdir -p $W/pool "$1"
   corpus $W/pool
@@ -165,7 +165,7 @@ ref() {
 arm() {
   REP=$1 bad=0
   rm -rf $W; subset $W/in; mkdir -p $W/out
-  run ${ARM_RUN:-qemu-aarch64 -L /usr/aarch64-linux-gnu} /usr/local/bin/gif-oracle-arm64 --threads 1 $W/in $W/out
+  run /usr/local/bin/gif-oracle-arm64 --threads 1 $W/in $W/out
   if diff -rq "$REP" $W/out > $W/d; then echo "aarch64: identical to x86_64 ($(ls $W/out | wc -l) files)"
   else echo "aarch64: DIFF"; head -n 50 $W/d; bad=1; fi
   rm -rf $W

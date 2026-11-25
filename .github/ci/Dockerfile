@@ -1,16 +1,20 @@
-# CI image: Rust runs here, on the in-cluster BuildKit, because the ARC runner has no toolchain.
+# CI image: Rust runs here, built with docker buildx on GitHub-hosted runners (ubuntu-24.04 for
+# x86_64, ubuntu-24.04-arm for the native arm64 stages).
 # The crate has no dependencies and gif-rs has no private git dependency, so no step needs a token
 # and no secret reaches the build. Two other crates have dependencies from crates.io: the fuzz
 # crate (libfuzzer-sys) and tests/parity/imagers (the image-rs gif crate). Each is fetched in its
 # own layer before `COPY . .`, then every later step runs offline.
 # Every tool is installed in a stage before `COPY . .`, so a new commit does not install it again,
 # and the fetch runs from the manifests and lockfiles alone.
-FROM rust:1.99.1-bookworm AS toolchain
-# gcc-aarch64-linux-gnu: the linker of `cargo build --target aarch64-unknown-linux-gnu`.
+ARG TARGETARCH
+# On x86_64, gcc-aarch64-linux-gnu is the linker of `cargo build --target aarch64-unknown-linux-gnu`
+# (the aarch64 lint and link check in `ci`). On arm64 that target is the host: no cross toolchain.
 RUN rustup component add rustfmt clippy && rustup target add aarch64-unknown-linux-gnu \
-    && apt-get update && apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
-    && rm -rf /var/lib/apt/lists/*
-ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+    && if [ "$TARGETARCH" = amd64 ]; then \
+         apt-get update && apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+         && rm -rf /var/lib/apt/lists/* \
+         && printf '[target.aarch64-unknown-linux-gnu]\nlinker = "aarch64-linux-gnu-gcc"\n' >> "$CARGO_HOME/config.toml"; \
+       fi
 WORKDIR /src
 # The manifests and lockfiles of the crate and of the fuzz crate, with stub targets, so the fetch
 # is a layer that only a change to them rebuilds. The crate has no dependencies: only the fuzz
@@ -44,21 +48,16 @@ RUN --mount=type=cache,id=gif-rs-target-ci,sharing=locked,target=/src/target \
 RUN --mount=type=cache,id=gif-rs-target-ci,sharing=locked,target=/src/target \
     find src examples tests -name '*.rs' -exec touch {} + && cargo build --locked --release --target aarch64-unknown-linux-gnu --examples
 
-# qemu-user, for the arm64 stages (the cross gcc is in `toolchain`).
-FROM toolchain AS qemu-tools
-RUN apt-get update && apt-get install -y --no-install-recommends qemu-user \
-    && rm -rf /var/lib/apt/lists/*
-ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu" \
-    CARGO_NET_OFFLINE=true
-
-FROM qemu-tools AS qemu-arm64
+# The arm64 stages are built natively on an arm64 runner (ubuntu-24.04-arm): no emulator.
+FROM toolchain AS native-arm64
+ENV CARGO_NET_OFFLINE=true
 COPY . .
 
-# aarch64 tests under qemu-user. gif-rs has no SIMD: the code is the same on both architectures.
+# aarch64 tests. gif-rs has no SIMD: the code is the same on both architectures.
 # The suite is small, so this stage runs the whole of it that needs no big input: the unit tests
 # (--lib) and the decode tests (--test decode). It checks the integer width and byte order
 # assumptions of the LZW port on a second architecture.
-FROM qemu-arm64 AS arm64
+FROM native-arm64 AS arm64
 RUN --mount=type=cache,id=gif-rs-target-arm64,sharing=locked,target=/src/target \
     find src examples tests -name '*.rs' -exec touch {} + \
     && cargo test --locked --target aarch64-unknown-linux-gnu --lib \
@@ -143,15 +142,19 @@ RUN --mount=type=cache,id=gif-rs-data,target=/data,sharing=locked,readonly \
 FROM scratch AS parity-report
 COPY --from=parity /report /
 
-# The oracle built for aarch64, run under qemu-user on the same subset, compared with the x86_64
-# tree above.
-FROM qemu-arm64 AS parity-arm64
+# The x86_64 reference tree as a build output (job parity-ref uploads it for parity-arm64).
+FROM scratch AS x86-ref-out
+COPY --from=x86-ref /ref /
+
+# The oracle built natively for aarch64, run on the same subset, compared with the x86_64 tree of
+# `x86-ref-out`. The workflow passes it as the named build context `x86ref`.
+FROM native-arm64 AS parity-arm64
 COPY --from=data /data.list /data.list
 RUN --mount=type=cache,id=gif-rs-target-arm64,sharing=locked,target=/src/target \
     find src examples tests -name '*.rs' -exec touch {} + \
     && cargo build --locked --release --target aarch64-unknown-linux-gnu --example oracle \
     && cp target/aarch64-unknown-linux-gnu/release/examples/oracle /usr/local/bin/gif-oracle-arm64
-RUN --mount=type=bind,from=x86-ref,source=/ref,target=/ref,rw \
+RUN --mount=type=bind,from=x86ref,target=/ref,rw \
     --mount=type=cache,id=gif-rs-data,target=/data,sharing=locked,readonly \
     sh tests/parity/run.sh arm /ref
 
