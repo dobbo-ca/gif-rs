@@ -55,6 +55,7 @@ jobs:
           context: .
           file: .github/ci/Dockerfile
           target: fuzz
+          build-args: CORPUS_RUN=${{ github.run_id }}-${{ github.run_attempt }}
           load: true
           push: false
           tags: gif-fuzz:local

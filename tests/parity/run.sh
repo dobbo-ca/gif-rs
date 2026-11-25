@@ -9,7 +9,7 @@
 #   run.sh ref <out-dir>                  gif-oracle on a subset of the corpus, one thread
 #   run.sh arm <ref-dir>                  the aarch64 oracle (native arm64) on the same subset vs <ref-dir>
 # Binaries: gif-oracle (gif-rs examples/oracle), giforacle (giflib), imagers-oracle (image-rs gif
-# crate), and for `arm` gif-oracle-arm64 run by $ARM_RUN. The gates: giflib vs gif-rs, and one
+# crate), and for `arm` gif-oracle-arm64 (run natively on arm64). The gates: giflib vs gif-rs, and one
 # thread vs default threads. Each must be an empty diff, else the exit status is not 0. The
 # image-rs comparison is information only.
 set -u

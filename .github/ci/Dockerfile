@@ -6,6 +6,7 @@
 # own layer before `COPY . .`, then every later step runs offline.
 # Every tool is installed in a stage before `COPY . .`, so a new commit does not install it again,
 # and the fetch runs from the manifests and lockfiles alone.
+FROM rust:1.99.1-bookworm AS toolchain
 ARG TARGETARCH
 # On x86_64, gcc-aarch64-linux-gnu is the linker of `cargo build --target aarch64-unknown-linux-gnu`
 # (the aarch64 lint and link check in `ci`). On arm64 that target is the host: no cross toolchain.
@@ -94,12 +95,16 @@ RUN --mount=type=cache,id=gif-rs-target-imagers,sharing=locked,target=/imagers/t
 # .gif files reaches the layer; the stages that read the corpus mount the same cache and depend on
 # this stage through that list. An entry with an empty sha256 fails this stage (exit 3) and the
 # log shows the PIN line to write into corpus.toml.
+# A cache mount is not saved to the Actions cache, and each hosted job starts a new builder, so the
+# mount is empty there. CORPUS_RUN (the workflow run id) makes the fetch run again in each build,
+# so a fetch layer restored from the Actions cache never leaves the readers with an empty mount.
 FROM debian:bookworm-slim AS data
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY tests/parity/fetch.sh tests/parity/corpus.toml /parity/
+ARG CORPUS_RUN=0
 RUN --mount=type=cache,id=gif-rs-data,target=/data,sharing=locked \
-    sh /parity/fetch.sh /parity/corpus.toml /data \
+    echo "corpus run $CORPUS_RUN" && sh /parity/fetch.sh /parity/corpus.toml /data \
     && (cd /data/x && find . -type f -name '*.gif' | sort) > /data.list && wc -l /data.list
 
 # The mutations of the corpus (giforacle -gen: truncations, bit flips, length-field edits,
