@@ -7,6 +7,23 @@ decode time is dominated by serial LZW, and the first frame of a typical file is
 prints TSV (`name`, `bytes`, `ns`). `tests/parity/c/giforacle.c` has a `bench <dir> <reps>` mode
 with the same TSV for giflib. `bench.yml` prints both per file-size class in the job summary.
 
+## Hosted-runner baseline
+
+Main 9c31799, `bench.yml` run 45730355937, on a GitHub-hosted `ubuntu-24.04` runner (the baseline for
+later runs):
+
+| input size class | files | giflib ms | gif-rs ms | gif-rs / giflib |
+|---|---|---|---|---|
+| <= 1 KiB | 17 | 0.102 | 0.070 | 0.68 |
+| <= 16 KiB | 12 | 2.567 | 2.113 | 0.82 |
+| <= 256 KiB | 6 | 4.779 | 3.940 | 0.82 |
+| > 256 KiB | 2 | 11.674 | 9.288 | 0.80 |
+| all | 37 | 19.122 | 15.412 | 0.81 |
+
+## Earlier self-hosted runner
+
+A different machine: compare ratios, not ms.
+
 Results (bench.yml, main 4a9ebe5, run 45266266164; 37 files that both tools decode, median of 5 runs):
 
 | input size class | files | giflib ms | gif-rs ms | gif-rs / giflib |
