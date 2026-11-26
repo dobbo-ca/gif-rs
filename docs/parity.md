@@ -59,5 +59,5 @@ Latest green `parity` job on main: 13409 inputs, no difference against giflib 5.
 
 - `run.sh full` also compares gif-rs with `--threads 1` against gif-rs with the default threads
   (`d-threads`). Any difference fails the job.
-- `parity-arm64` runs the aarch64 oracle under qemu on every 4th file of the sorted corpus and
+- `parity-arm64` runs the aarch64 oracle, built and run on a native arm64 runner, on every 4th file of the sorted corpus and
   compares it with the x86_64 output of the same files.
